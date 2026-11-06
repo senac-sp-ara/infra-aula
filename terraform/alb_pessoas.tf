@@ -1,12 +1,36 @@
 # ==============================================================================
-# SEGUNDA APLICACAO (pessoas-service) NO MESMO ALB
-# Listener 8081 -> Target Group tg-senac-pessoas -> NodePort 30081
+# APLICACAO pessoas-service (acessa o banco de dados) VIA ALB
+# Listener 8080 -> Target Group tg-senac-pessoas -> NodePort 30081
 # ==============================================================================
 
-# Porta externa do ALB e NodePort da segunda aplicacao
+# Porta externa do ALB e NodePort da aplicacao
 locals {
-  pessoas_alb_port  = 8081
+  pessoas_alb_port  = 8080
   pessoas_node_port = 30081
+}
+
+# Security Group do ALB (antes definido em alb.tf)
+resource "aws_security_group" "alb" {
+  name        = "alb-senac-app-sg"
+  description = "Permite acesso HTTP publico ao ALB da aplicacao Senac"
+  vpc_id      = module.vpc.vpc_id
+
+  tags = {
+    Name = "sg-alb-senac-app"
+  }
+}
+
+# Load Balancer publico nas subnets publicas (antes definido em alb.tf)
+resource "aws_lb" "app" {
+  name               = "alb-senac-app"
+  load_balancer_type = "application"
+  internal           = false
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = module.vpc.public_subnets
+
+  tags = {
+    Name = "alb-senac-app"
+  }
 }
 
 # Entrada: HTTP na porta 8081 vindo de qualquer origem
@@ -59,7 +83,7 @@ resource "aws_lb_target_group" "pessoas" {
   }
 }
 
-# Listener 8081 encaminhando para o Target Group do pessoas-service
+# Listener 8080 encaminhando para o Target Group do pessoas-service
 resource "aws_lb_listener" "pessoas" {
   load_balancer_arn = aws_lb.app.arn
   port              = local.pessoas_alb_port
@@ -77,7 +101,7 @@ resource "aws_autoscaling_attachment" "pessoas_nodes" {
   lb_target_group_arn    = aws_lb_target_group.pessoas.arn
 }
 
-# URL pronta para o segundo app
+# URL pronta para o app
 output "alb_pessoas_url" {
   description = "URL HTTP do pessoas-service via ALB"
   value       = "http://${aws_lb.app.dns_name}:${local.pessoas_alb_port}"
